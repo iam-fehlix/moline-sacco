@@ -13,7 +13,7 @@ const LandingPage = () => {
       >
         <div className="container">
           <h1 className="display-5 fw-bold">Empowering Your Financial Future</h1>
-          <p className="lead">Join moline SACCO for secure savings and flexible loans.</p>
+          <p className="lead">Join Moline SACCO for secure savings and flexible loans.</p>
           <div className="mt-4">
             <Link to="/login" className="btn btn-primary btn-lg mx-2">Login</Link>
             <Link to="/register" className="btn btn-success btn-lg mx-2">Join Us</Link>
@@ -23,9 +23,9 @@ const LandingPage = () => {
 
       {/* About Section */}
       <section className="container text-center my-5">
-        <h2 className="mb-3">MOLINE SACCO: Where Growth Meets Opportunity</h2>
+        <h2 className="mb-3">Moline SACCO: Where Growth Meets Opportunity</h2>
         <p className="text-muted">
-        At moline SACCO, we empower matatu owners with financial stability, seamless operations, and a future full of possibilities. Whether you're looking to expand your business, secure your investments, or access exclusive financial benefits, we are here to support you every step of the way.
+        At Moline SACCO, we empower matatu owners with financial stability, seamless operations, and a future full of possibilities. Whether you're looking to expand your business, secure your investments, or access exclusive financial benefits, we are here to support you every step of the way.
         </p>
       </section>
 
@@ -72,7 +72,7 @@ const LandingPage = () => {
               style={{ width: '80px', height: '80px' }}
             />
             <blockquote className="blockquote">
-              <p>“moline SACCO helped me start my business. The support was amazing!”</p>
+              <p>“Moline SACCO helped me start my business. The support was amazing!”</p>
               <footer className="blockquote-footer">Aloise Mutune, Member since 2024</footer>
             </blockquote>
           </div>
@@ -89,7 +89,7 @@ const LandingPage = () => {
       {/* Footer */}
       <footer className="bg-dark text-white py-4">
         <div className="container text-center">
-          <p>&copy; {new Date().getFullYear()} moline SACCO. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Moline SACCO. All rights reserved.</p>
           <p>Email: info@molinesacco.com | Phone: +254 700 000 000</p>
           <div>
             <a href="#" className="text-white me-3">Facebook</a>
