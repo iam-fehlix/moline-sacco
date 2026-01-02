@@ -23,7 +23,7 @@ const LandingPage = () => {
 
       {/* About Section */}
       <section className="container text-center my-5">
-        <h2 className="mb-3">moline SACCO: Where Growth Meets Opportunity</h2>
+        <h2 className="mb-3">MOLINE SACCO: Where Growth Meets Opportunity</h2>
         <p className="text-muted">
         At moline SACCO, we empower matatu owners with financial stability, seamless operations, and a future full of possibilities. Whether you're looking to expand your business, secure your investments, or access exclusive financial benefits, we are here to support you every step of the way.
         </p>

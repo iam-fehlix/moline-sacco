@@ -1,5 +1,5 @@
 {
-  "name": "vuka-sacco",
+  "name": "moline-sacco",
   "version": "1.0.0",
   "description": "sacco management system",
   "private": true,
@@ -90,5 +90,5 @@
     "webpack-dev-server": "^5.0.4"
   },
   "main": "index.js",
-  "repository": "https://github.com/Alloysj/Vuka.git"
+  "repository":"https://github.com/iam-fehlix/moline-sacco"
 }
