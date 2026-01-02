@@ -1,0 +1,304 @@
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import Swal from 'sweetalert2';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import axiosInstance from '../../context/axiosInstance';
+import matisLogo from '../../assets/moline-logo.png';
+import './Register.css';
+
+const streetNames = [
+  "Bahati", "Biashara", "Dundori", "Ewaso Kendong", "Gilgil", "Kiptangwanyi", 
+  "Kuresoi", "Kuresoi South", "Lake View", "Mau Narok", "Molo", "Naivasha", 
+  "Nakuru", "Nakuru Town East", "Rongai", "Njoro", "Shabab", "Solai", "Subukia"
+];
+
+function Register() {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    other_names: '',
+    email: '',
+    phone: '',
+    national_id: '',
+    address: '',
+    password: '',
+    confirmPassword: '',
+    gender: '',
+    ID_image: null,
+  });
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordRules, setPasswordRules] = useState({
+    length: false,
+    lowercase: false,
+    uppercase: false,
+    number: false,
+    specialChar: false,
+  });
+
+  const handleChange = (e) => {
+    const { name, value, files } = e.target;
+    setFormData((prevFormData) => ({
+      ...prevFormData,
+      [name]: files ? files[0] : value,
+    }));
+
+    if (name === 'password') {
+      setPasswordRules({
+        length: value.length >= 8,
+        lowercase: /[a-z]/.test(value),
+        uppercase: /[A-Z]/.test(value),
+        number: /\d/.test(value),
+        specialChar: /[@$!%*?&]/.test(value),
+      });
+    }
+  };
+
+  const checkEmailExists = async (email) => {
+    try {
+      const response = await axiosInstance.post('/users/check-email', { email });
+      return response.data.exists;
+    } catch (error) {
+      console.error('Error checking email:', error);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    const { phone, national_id, password, confirmPassword, email, first_name, last_name, address, gender, ID_image } = formData;
+
+    // Convert national_id to string if it's a number
+    const nationalIdStr = String(national_id);
+    
+    if (String(phone).length !== 10) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Phone should be ten digits.' });
+      return;
+    }
+    if (nationalIdStr.length < 8 || nationalIdStr.length > 9) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'National ID should be 8-9 digits' });
+      return;
+    }
+
+    const missingRules = [];
+    if (!passwordRules.length) missingRules.push('Minimum 8 characters');
+    if (!passwordRules.lowercase) missingRules.push('At least one lowercase letter');
+    if (!passwordRules.uppercase) missingRules.push('At least one uppercase letter');
+    if (!passwordRules.number) missingRules.push('At least one number');
+    if (!passwordRules.specialChar) missingRules.push('At least one special character (@$!%*?&)');
+
+    if (missingRules.length > 0) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Password Requirements Not Met',
+        html: `<ul style="text-align:left;">${missingRules.map(rule => `<li>${rule}</li>`).join('')}</ul>`,
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Passwords do not match.' });
+      return;
+    }
+    if (!first_name || !last_name || !gender || !ID_image || !address) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'All fields required.' });
+      return;
+    }
+
+    try {
+      // Check if email exists
+      const emailExists = await checkEmailExists(email);
+      if (emailExists) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Email already exists.' });
+        return;
+      }
+
+      // Create FormData properly
+      const dataToSend = new FormData();
+      dataToSend.append('first_name', first_name);
+      dataToSend.append('last_name', last_name);
+      dataToSend.append('other_names', formData.other_names || '');
+      dataToSend.append('email', email);
+      dataToSend.append('phone', phone);
+      dataToSend.append('national_id', national_id);
+      dataToSend.append('address', address);
+      dataToSend.append('password', password);
+      dataToSend.append('gender', gender);
+      dataToSend.append('id_image', ID_image);
+
+      console.log('Submitting signup form...');
+      
+      const response = await axiosInstance.post('/users/signup', dataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      console.log('Signup response:', response);
+
+      if (response.data && response.data.message) {
+        Swal.fire({ 
+          icon: 'success', 
+          title: 'Signup Successful!', 
+          text: 'You have successfully signed up. Redirecting to login...' 
+        });
+        setTimeout(() => navigate('/Login'), 1500);
+      } else {
+        Swal.fire({ 
+          icon: 'error', 
+          title: 'Signup Failed', 
+          text: response.data.error || 'There was an error signing up.' 
+        });
+      }
+    } catch (error) {
+      console.error('Signup error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'An unexpected error occurred.';
+      Swal.fire({ 
+        icon: 'error', 
+        title: 'Signup Error', 
+        text: errorMessage 
+      });
+    }
+  };
+
+  return (
+    <div>
+      <section className="text-center">
+        <div className="p-5 bg-image" style={{ backgroundImage: `url(${matisLogo})`, height: 300 }} />
+        <div className="signup-card-container">
+          <div className="card mx-4 mx-md-5 signup-card shadow-5-strong bg-body-tertiary" style={{ marginTop: "-100px", backdropFilter: "blur(30px)" }}>
+            <div className="card-body py-5 px-md-5">
+              <div className="row d-flex justify-content-center">
+                <div className="col-lg-30">
+                  <h2 className="fw-bold mb-5">Sign up now</h2>
+                  <form onSubmit={handleSubmit} encType="multipart/form-data">
+
+                    {/* Form fields */}
+                    <div className="row">
+                      {/* First Name */}
+                      <div className="col-md-6 mb-4">
+                        <input type="text" name="first_name" value={formData.first_name} onChange={handleChange} className="form-control" placeholder="First Name" required />
+                      </div>
+                      {/* Last Name */}
+                      <div className="col-md-6 mb-4">
+                        <input type="text" name="last_name" value={formData.last_name} onChange={handleChange} className="form-control" placeholder="Last Name" required />
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      {/* Other Names */}
+                      <div className="col-md-6 mb-4">
+                        <input type="text" name="other_names" value={formData.other_names} onChange={handleChange} className="form-control" placeholder="Other Names (Optional)" />
+                      </div>
+                      {/* Gender */}
+                      <div className="col-md-6 mb-4">
+                        <select name="gender" value={formData.gender} onChange={handleChange} className="form-control" required>
+                          <option value="">Select Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      {/* Email */}
+                      <div className="col-md-6 mb-4">
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} className="form-control" placeholder="Email" required />
+                      </div>
+                      {/* Phone */}
+                      <div className="col-md-6 mb-4">
+                        <input type="text" name="phone" value={formData.phone} onChange={handleChange} className="form-control" placeholder="Phone" required />
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      {/* National ID */}
+                      <div className="col-md-6 mb-4">
+                        <input type="number" name="national_id" value={formData.national_id} onChange={handleChange} className="form-control" placeholder="National ID" required />
+                      </div>
+                      {/* Upload ID Image */}
+                      <div className="col-md-6 mb-4">
+                        <input type="file" name="ID_image" onChange={handleChange} className="form-control" accept=".jpg,.jpeg,.png" required />
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      {/* Address */}
+                      <div className="col-md-12 mb-4">
+                        <select name="address" value={formData.address} onChange={handleChange} className="form-control" required>
+                          <option value="">Select Address</option>
+                          {streetNames.map((street, index) => (
+                            <option key={index} value={street}>{street}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Password Fields */}
+                    <div className="row">
+                      <div className="col-md-6 mb-4">
+                        <div className="position-relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            name="password"
+                            value={formData.password}
+                            onChange={handleChange}
+                            className="form-control"
+                            placeholder="Password"
+                            required
+                          />
+                          <small
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="position-absolute top-50 end-0 translate-middle-y me-3"
+                            style={{ cursor: "pointer", fontSize: "14px", color: "#007bff" }}
+                          >
+                            {showPassword ? "Hide" : "Show"}
+                          </small>
+                        </div>
+                      </div>
+
+                      <div className="col-md-6 mb-4">
+                        <input
+                          type="password"
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          className="form-control"
+                          placeholder="Confirm Password"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password Rules */}
+                    <div className="mb-3">
+                      <ul className="list-unstyled">
+                        <li style={{ color: passwordRules.length ? 'green' : 'red' }}>{passwordRules.length ? '✔' : '✖'} Minimum 8 characters</li>
+                        <li style={{ color: passwordRules.lowercase ? 'green' : 'red' }}>{passwordRules.lowercase ? '✔' : '✖'} At least one lowercase letter</li>
+                        <li style={{ color: passwordRules.uppercase ? 'green' : 'red' }}>{passwordRules.uppercase ? '✔' : '✖'} At least one uppercase letter</li>
+                        <li style={{ color: passwordRules.number ? 'green' : 'red' }}>{passwordRules.number ? '✔' : '✖'} At least one number</li>
+                        <li style={{ color: passwordRules.specialChar ? 'green' : 'red' }}>{passwordRules.specialChar ? '✔' : '✖'} At least one special character (@$!%*?&)</li>
+                      </ul>
+                    </div>
+
+                    <button type="submit" className="btn btn-primary btn-block mb-2">Sign up</button>
+
+                    <div className="mt-3">
+                      <p>Already have an account?</p>
+                      <Link to="/Login" className="text-decoration-none">Sign In</Link>
+                    </div>
+
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default Register;

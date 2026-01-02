@@ -1,0 +1,77 @@
+.signup-card-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.signup-card {
+    max-width: 500px; /* Adjust the max-width as needed */
+    margin: auto; /* Center horizontally */
+    border-radius: 10px; /* Add rounded corners */
+}
+
+.bg-body-tertiary {
+    background-color: #f8f9fa; /* Change background color as needed */
+    backdrop-filter: blur(30px); /* Add blur effect */
+}
+
+.shadow-5-strong {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); /* Add strong shadow */
+}
+/* Ensure input fields only have a bottom border */
+.custom-input {
+    border: none;
+    padding: 2px;
+    margin-bottom: 2px;
+    transition: border-bottom-color 0.3s;
+}
+
+.custom-input:focus {
+    outline: none;
+}
+
+/* Style for the placeholder */
+.custom-input::placeholder {
+    color: #aaa;
+    transition: opacity 0.3s;
+}
+
+.custom-input:focus::placeholder {
+    opacity: 0;
+}
+
+.form-outline .form-control {
+    border-radius: 5px;
+    padding: 10px;
+    width: 100%; /* Make input fields take full width */
+}
+
+.form-outline .form-label {
+    position: absolute;
+    top: -7px;
+    left: 10px;
+    background: #f8f9fa;
+    padding: 0 5px;
+    font-size: 0.85rem;
+}
+
+/* Adjust form-control class to remove additional borders */
+.form-control {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Ensure label transitions smoothly when input is focused */
+.form-outline {
+    position: relative;
+    border-bottom: 1px solid #6791ee;
+}
+
+.form-outline input:focus + .form-label,
+.form-outline input:not(:placeholder-shown) + .form-label {
+    transform: translateY(-50%);
+    font-size: 0.75rem; /* Adjust font size as needed */
+    color: #6c757d; /* Adjust label color as needed */
+}

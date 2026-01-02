@@ -1,0 +1,43 @@
+/* .main-sidebar {
+  width: 250px;
+  transition: all 0.3s ease-in-out;
+}
+
+.brand-image {
+  width: 40px;
+  height: 40px;
+  opacity: 0.8;
+}
+
+.nav-header {
+  padding: 10px;
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+  transition: background 0.3s ease-in-out;
+}
+
+.nav-header:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-treeview {
+  display: none;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.nav-treeview.open {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.nav-icon {
+  margin-right: 8px;
+}
+
+.right {
+  float: right;
+} */

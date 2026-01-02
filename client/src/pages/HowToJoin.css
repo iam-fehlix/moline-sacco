@@ -1,0 +1,114 @@
+/* General Page Styling */
+body {
+  background: linear-gradient(
+    to bottom,
+    #f5f7fa,
+    #c3cfe2
+  ); /* Light gradient background */
+  font-family: "Poppins", sans-serif;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+.container-body {
+  margin-top: 50px; 
+  padding: 20px;
+}
+
+.hero-section {
+  background: url("../assets/toyota-hiace.png") no-repeat center center/cover;
+  padding: 100px 0;
+  text-align: center;
+  color: white;
+}
+
+.hero-section h1 {
+  font-size: 2.5rem;
+  font-weight: bold;
+}
+
+.hero-section p {
+  font-size: 1.2rem;
+  margin-top: 10px;
+}
+
+/* Cards Styling */
+.card {
+  border-radius: 10px;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+  background: white;
+  transition: transform 0.3s ease-in-out;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+}
+
+.card-title {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.card-body {
+  padding: 20px;
+  text-align: center;
+}
+
+/* Buttons */
+/* .btn-primary {
+  background-color: #2980b9;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #1f618d;
+}
+
+.btn-success {
+  background-color: #27ae60;
+  border: none;
+}
+
+.btn-success:hover {
+  background-color: #1e8449;
+} */
+
+/* Section Titles */
+.section-title {
+  font-size: 2rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 30px;
+  color: #2c3e50;
+}
+.join-sacco-page {
+  padding-bottom: 50px;
+}
+
+.requirement-card {
+  background: linear-gradient(135deg, #e3ffe7 0%, #d9e7ff 100%);
+}
+
+.cost-card {
+  border-radius: 12px;
+  transition: transform 0.3s ease-in-out;
+}
+
+.cost-card:hover {
+  transform: scale(1.05);
+}
+
+.list-group-item {
+  font-size: 1.1rem;
+}
+
+h2 {
+  font-weight: bold;
+}
+
+button {
+  font-size: 1.1rem;
+  padding: 10px 20px;
+  border-radius: 8px;
+}
