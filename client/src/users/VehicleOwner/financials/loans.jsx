@@ -4,9 +4,15 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import { Modal, Button, Form } from 'react-bootstrap';
 import axiosInstance from '../../../context/axiosInstance';
 
-const fetchUserData = async () => {
+const fetchUserData = async (matatuId) => {
     try {
-        const response = await axiosInstance.get('/finance/userFinance');
+        if (!matatuId) {
+            console.warn('No matatu_id provided for fetchUserData');
+            return null;
+        }
+        const response = await axiosInstance.get('/finance/userFinance', {
+            params: { matatu_id: matatuId }
+        });
 
         if (response.status !== 200) {
             throw new Error('Failed to fetch user data');
@@ -70,13 +76,48 @@ function LoanApplication() {
     const [users, setUsers] = useState([]);
     const [filteredUsers, setFilteredUsers] = useState([]);
     const [selectedGuarantors, setSelectedGuarantors] = useState([]);
+    const [loading, setLoading] = useState(true);
 
+    // Fetch data with proper dependency handling and React Strict Mode compatibility
     useEffect(() => {
-        fetchUserData().then(data => setUserData(data));
-        fetchMatatus().then(matatus => setMatatus(matatus));
-        fetchPendingLoans().then(data => setPendingLoans(data));
-        fetchUsers().then(users => setUsers(users));
-    }, []);
+        let isMounted = true;
+
+        const initializeData = async () => {
+            try {
+                setLoading(true);
+                // Fetch matatus first to get matatu_id
+                const matatusData = await fetchMatatus();
+                if (!isMounted) return;
+
+                setMatatus(matatusData || []);
+
+                // If we have matatus, fetch user data with the first matatu_id
+                if (matatusData && matatusData.length > 0) {
+                    const matatuId = matatusData[0].matatu_id;
+                    const userData = await fetchUserData(matatuId);
+                    if (isMounted) setUserData(userData);
+                }
+
+                // Fetch loans and users
+                const loansData = await fetchPendingLoans();
+                if (isMounted) setPendingLoans(loansData || []);
+
+                const usersData = await fetchUsers();
+                if (isMounted) setUsers(usersData || []);
+
+                setLoading(false);
+            } catch (error) {
+                console.error('Error initializing data:', error);
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        initializeData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []); // Empty dependency array - runs once on mount
 
     const handleApplyLoan = (matatu_id, type) => {
         const selectedMatatu = matatus.find(matatu => matatu.matatu_id === matatu_id);

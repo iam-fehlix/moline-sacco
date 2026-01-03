@@ -72,7 +72,7 @@ const ContactUs = () => {
           {[
             { text: "info@Molinesacco.com", icon: faEnvelope },
             { text: "+254 700 000 000", icon: faPhoneAlt },
-            { text: "Nairobi, Kenya", icon: faMapMarkerAlt },
+            { text: "Nakuru, Kenya", icon: faMapMarkerAlt },
           ].map((info, index) => (
             <motion.div
               key={index}
@@ -157,6 +157,7 @@ const ContactUs = () => {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
+          {/* Updated: Changed map location from Nairobi to Nakuru, Kenya (coordinates: -0.3031, 36.0800) - Jan 2, 2026 */}
           <iframe
             title="Moline SACCO Location"
             width="100%"
@@ -167,7 +168,7 @@ const ContactUs = () => {
               borderRadius: "12px",
               boxShadow: "0px 0px 10px rgba(0,0,0,0.2)",
             }}
-            src="https://www.google.com/maps/embed/v1/place?q=Nairobi,Kenya&key=AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao"
+            src="https://www.google.com/maps/embed/v1/place?q=Nakuru,Kenya&key=AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao"
             allowFullScreen
           ></iframe>
         </motion.div>

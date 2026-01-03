@@ -1,5 +1,5 @@
 import React from "react";
-import withdrawalRequestPDF from "../assets/VUKA_withdrawal_request.pdf";
+import withdrawalRequestPDF from "../assets/MOLINE_withdrawal_request.pdf";
 
 const ExitSacco = () => {
   return (

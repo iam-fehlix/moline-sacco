@@ -92,34 +92,44 @@ const initiateMpesaSTKPush = async (phone, amount, accountNumber) => {
 const getSavings = async (matatu_id) => {
   try {
     const savingsQuery = `
-            SELECT COALESCE(SUM(amount), 0) AS total_savings
-            FROM savings
-            WHERE matatu_id = ?
-        `;
+      SELECT COALESCE(SUM(amount), 0) AS total_savings
+      FROM savings
+      WHERE matatu_id = ?
+    `;
     const [result] = await pool.query(savingsQuery, [matatu_id]);
-    if (result && result.length > 0) {
-      console.log("Total savings:", result[0].total_savings);
-      return result[0].total_savings;
-    } else {
-      return 0;
-    }
+    
+    const totalSavings = result && result.length > 0 ? result[0].total_savings : 0;
+    console.log(`Savings for matatu ${matatu_id}: ${totalSavings}`);
+    return totalSavings;
   } catch (error) {
     console.error("Error fetching total savings:", error);
     throw error;
   }
 };
 
-const getTotalSavings = (req, res) => {
+// FIXED: async/await consistency and proper error handling
+const getTotalSavings = async (req, res) => {
   const userId = req.userId;
-  const sql =
-    "SELECT SUM(amount) AS totalSavings FROM savings WHERE user_id = ?";
-  pool.query(sql, [userId], (error, results) => {
-    if (error) {
-      console.error("Error fetching total savings:", error);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-    res.json(results[0]);
-  });
+  
+  if (!userId) {
+    return res.status(400).json({ error: "User ID required" });
+  }
+
+  try {
+    const sql = `
+      SELECT COALESCE(SUM(amount), 0) AS totalSavings 
+      FROM savings 
+      WHERE user_id = ?
+    `;
+    const [results] = await pool.query(sql, [userId]);
+    
+    const totalSavings = results && results.length > 0 ? results[0].totalSavings : 0;
+    console.log(`Total savings for user ${userId}: ${totalSavings}`);
+    res.json({ totalSavings: totalSavings, userId: userId });
+  } catch (error) {
+    console.error("Error fetching total savings:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
 };
 
 // loans for a given vehicle
@@ -171,232 +181,287 @@ const getPayments = (req, res) => {
 };
 
 // Function to request a loan for a given vehicle
-const loanRequest = (req, res) => {
+const loanRequest = async (req, res) => {
   const userId = req.userId;
   const { matatuId, loanAmount, loanType, guarantors } = req.body;
-  console.log("matatu_id", matatuId);
-
-  if (!loanAmount || !loanType) {
+  // FIXED: Using async/await, proper validation of all fields
+  
+  if (!userId || !matatuId || !loanAmount || !loanType) {
+    console.warn("Loan request missing fields:", { userId, matatuId, loanAmount, loanType });
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  let parsedGuarantors = [];
-  if (loanType === "emergency" && guarantors) {
-    try {
-      parsedGuarantors = JSON.parse(guarantors);
-    } catch (error) {
-      return res.status(400).json({ error: "Invalid guarantors format" });
+  try {
+    let parsedGuarantors = [];
+    if (loanType === "emergency" && guarantors) {
+      try {
+        parsedGuarantors = typeof guarantors === 'string' ? JSON.parse(guarantors) : guarantors;
+      } catch (error) {
+        console.error("Invalid guarantors format:", error);
+        return res.status(400).json({ error: "Invalid guarantors format" });
+      }
     }
+
+    // Insert loan (amount_issued=0 indicates pending, >0 indicates approved)
+    const applyLoanQuery =
+      "INSERT INTO loans (user_id, matatu_id, amount_applied, amount_issued, amount_due, loan_type) VALUES (?, ?, ?, 0, 0, ?)";
+    
+    const [result] = await pool.query(
+      applyLoanQuery,
+      [userId, matatuId, loanAmount, loanType]
+    );
+
+    const loanId = result.insertId;
+    console.log(`Loan request created - ID: ${loanId}, User: ${userId}, Amount: ${loanAmount}`);
+
+    // Insert guarantors if needed
+    if (loanType === "emergency" && parsedGuarantors.length > 0) {
+      const guarantorValues = parsedGuarantors.map((guarantorId) => [loanId, guarantorId]);
+      const insertGuarantorsQuery = "INSERT INTO guarantors (loan_id, guarantor_id) VALUES ?";
+      await pool.query(insertGuarantorsQuery, [guarantorValues]);
+    }
+
+    res.status(201).json({
+      message: "Loan application submitted successfully",
+      loanId: loanId,
+      hasGuarantors: parsedGuarantors.length > 0
+    });
+  } catch (error) {
+    console.error("Error applying for loan:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
-
-  const applyLoanQuery =
-    "INSERT INTO loans (user_id, matatu_id, amount_applied, loan_type) VALUES (?, ?, ?, ?)";
-
-  pool.query(
-    applyLoanQuery,
-    [userId, matatuId, loanAmount, loanType],
-    (error, results) => {
-      if (error) {
-        console.error("Error applying for loan:", error);
-        return res.status(500).json({ error: "Internal server error" });
-      }
-
-      const loanId = results.insertId;
-
-      if (loanType === "emergency" && parsedGuarantors.length > 0) {
-        const guarantorValues = parsedGuarantors.map((guarantorId) => [
-          loanId,
-          guarantorId,
-        ]);
-        const insertGuarantorsQuery =
-          "INSERT INTO guarantors (loan_id, guarantor_id) VALUES ?";
-
-        pool.query(
-          insertGuarantorsQuery,
-          [guarantorValues],
-          (guarantorError) => {
-            if (guarantorError) {
-              console.error(
-                "Error inserting guarantor details:",
-                guarantorError
-              );
-              return res.status(500).json({ error: "Internal server error" });
-            }
-
-            res.status(201).json({
-              message:
-                "Loan application submitted successfully with guarantors",
-            });
-          }
-        );
-      } else {
-        res
-          .status(201)
-          .json({ message: "Loan application submitted successfully" });
-      }
-    }
-  );
 };
 
 // Function to approve a loan for a given vehicle
-const approveLoan = (req, res) => {
+const approveLoan = async (req, res) => {
   const { loanId, amountIssued, matatuId } = req.body;
-  console.log(matatuId);
+  // FIXED: async/await, proper amount_due initialization
 
   if (!loanId || !amountIssued || !matatuId) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  const getLoanDetailsQuery =
-    "SELECT user_id, amount_applied FROM loans WHERE loan_id = ?";
-  const updateLoanQuery =
-    "UPDATE loans SET amount_issued = ?, amount_due = amount_due + ? WHERE loan_id = ?";
-  const insertSavingsQuery = `
-        INSERT INTO savings (user_id, matatu_id, amount, created_at)
-        VALUES (?, ?, ?, NOW())
-    `;
+  try {
+    const getLoanDetailsQuery =
+      "SELECT user_id, amount_applied, amount_issued FROM loans WHERE loan_id = ?";
+    const [loanResult] = await pool.query(getLoanDetailsQuery, [loanId]);
 
-  pool.query(getLoanDetailsQuery, [loanId], (error, loanResult) => {
-    if (error) {
-      console.error("Error fetching loan details:", error);
-      return res.status(500).json({ error: "Internal server error" });
+    if (!loanResult || loanResult.length === 0) {
+      return res.status(404).json({ error: "Loan not found" });
     }
 
-    if (loanResult.length === 0) {
-      return res.status(404).json({ error: "Loan not found" });
+    // Prevent approving a loan that is already approved (amount_issued > 0)
+    const currentAmountIssued = loanResult[0].amount_issued;
+    if (currentAmountIssued > 0) {
+      console.warn(`Attempt to approve loan ${loanId} that is already approved (amount_issued=${currentAmountIssued})`);
+      return res.status(400).json({ error: 'Loan already approved' });
     }
 
     const { user_id: userId, amount_applied: amountApplied } = loanResult[0];
 
     if (amountIssued > amountApplied) {
-      return res
-        .status(400)
-        .json({ error: "Amount issued exceeds applied amount" });
+      console.warn(`Loan approval rejected - Issued (${amountIssued}) > Applied (${amountApplied})`);
+      return res.status(400).json({ error: "Amount issued exceeds applied amount" });
     }
 
-    pool.query(
-      updateLoanQuery,
-      [amountIssued, amountIssued, loanId],
-      (error) => {
-        if (error) {
-          console.error("Error updating loan:", error);
-          return res.status(500).json({ error: "Internal server error" });
-        }
+    // FIXED: Set amount_due = amount_issued (equal initially for repayment tracking)
+    const updateLoanQuery =
+      "UPDATE loans SET amount_issued = ?, amount_due = ? WHERE loan_id = ?";
+    
+    await pool.query(updateLoanQuery, [amountIssued, amountIssued, loanId]);
+    console.log(`Loan approved - ID: ${loanId}, Issued: ${amountIssued}, Due: ${amountIssued}`);
 
-        // Insert a new record into the savings table with the issued amount as a negative value
-        pool.query(
-          insertSavingsQuery,
-          [userId, matatuId, -amountIssued],
-          (error) => {
-            if (error) {
-              console.error("Error inserting savings record:", error);
-              return res.status(500).json({ error: "Internal server error" });
-            }
-
-            res.status(200).json({
-              message: "Loan approved and savings record inserted successfully",
-            });
-          }
-        );
-      }
-    );
-  });
+    res.status(200).json({
+      message: "Loan approved successfully",
+      loanId: loanId,
+      amountIssued: amountIssued,
+      status: "approved"
+    });
+  } catch (error) {
+    console.error("Error approving loan:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
 };
 
 // Function to get pending loans for a given vehicle
-const getPendingLoans = (req, res) => {
+const getPendingLoans = async (req, res) => {
   const userId = req.userId;
+  
+  if (!userId) {
+    return res.status(400).json({ error: "User ID required" });
+  }
 
-  const pendingLoansQuery =
-    "SELECT loan_id, loan_type, amount_applied, matatu_id FROM loans WHERE amount_issued = 0 AND user_id = ?";
+  // FIXED: async/await consistency with comprehensive data
+  try {
+    const pendingLoansQuery = `
+      SELECT 
+        loan_id, 
+        loan_type, 
+        amount_applied, 
+        amount_issued, 
+        amount_due,
+        matatu_id, 
+        created_at
+      FROM loans 
+      WHERE user_id = ? AND (amount_issued = 0 OR amount_issued IS NULL)
+      ORDER BY created_at DESC
+    `;
 
-  pool.query(pendingLoansQuery, [userId], (error, results) => {
+    const [results] = await pool.query(pendingLoansQuery, [userId]);
+    console.log(`Found ${results ? results.length : 0} pending loans for user ${userId}`);
+    res.json(results || []);
+  } catch (error) {
     if (error) {
       console.error("Error fetching pending loans:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: "Internal server error", details: error.message });
     }
-    res.json(results);
-  });
+  }
 };
 
-// Function to get all pending loans
-const getAllPendingLoans = (req, res) => {
-  const pendingLoansQuery =
-    "SELECT loan_id, loan_type, amount_applied FROM loans WHERE amount_issued = 0";
+// FIXED: async/await for admin approval view
+const getAllPendingLoans = async (req, res) => {
+  // FIXED: Returns all pending loans with user details for admin approval
+  try {
+    const pendingLoansQuery = `
+      SELECT 
+        loan_id, 
+        user_id,
+        loan_type, 
+        amount_applied, 
+        amount_issued,
+        amount_due,
+        matatu_id,
+        created_at
+      FROM loans 
+      WHERE amount_issued = 0 OR amount_issued IS NULL
+      ORDER BY created_at ASC
+    `;
 
-  pool.query(pendingLoansQuery, (error, results) => {
+    const [results] = await pool.query(pendingLoansQuery);
+    console.log(`Found ${results ? results.length : 0} pending loans for approval`);
+    res.json(results || []);
+  } catch (error) {
     if (error) {
       console.error("Error fetching pending loans:", error);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: "Internal server error", details: error.message });
     }
-
-    res.json(results);
-  });
+  }
 };
 
 const checkLoanEligibility = async (req, res) => {
   const userId = req.userId;
   const { matatu_id } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({ error: "Unauthorized" });
+  // FIXED: Better validation
+  if (!userId || !matatu_id) {
+    return res.status(400).json({ error: "User ID and matatu_id required" });
   }
 
   try {
-    // Check if share capital is paid
+    // Check if user paid share capital (status = 'approved')
     const shareCapitalQuery = `
-            SELECT status 
-            FROM users 
-            WHERE user_id = ? AND status = 'approved'
-        `;
+      SELECT user_id, status 
+      FROM users 
+      WHERE user_id = ? AND status = 'approved'
+    `;
     const [shareCapitalResult] = await pool.query(shareCapitalQuery, [userId]);
+    const shareCapitalPaid = shareCapitalResult && shareCapitalResult.length > 0;
 
-    if (shareCapitalResult.length === 0) {
-      return res.status(400).json({ error: "Share capital not paid" });
+    if (!shareCapitalPaid) {
+      console.log(`Share capital not paid for user ${userId}`);
+      return res.status(400).json({ error: "Share capital payment required" });
     }
 
     // Get total savings for the matatu
     const totalSavings = await getSavings(matatu_id);
 
-    // Check for outstanding loans (outstanding amount > 0)
+    // Check for outstanding loans
     const outstandingLoanQuery = `
-    SELECT COUNT(*) AS active_loans
-    FROM loans
-    WHERE matatu_id = ? AND amount_due > 0
+      SELECT COUNT(*) AS active_loans, COALESCE(SUM(amount_due), 0) AS total_due
+      FROM loans
+      WHERE matatu_id = ? AND amount_due > 0
     `;
     const [loanResult] = await pool.query(outstandingLoanQuery, [matatu_id]);
+    
+    // FIXED: Better handling of loan results
+    const loanData = loanResult && loanResult.length > 0 ? loanResult[0] : { active_loans: 0, total_due: 0 };
+    const hasOutstandingLoan = loanData.active_loans > 0;
 
-    // Ensure loanResult is not empty
-    const hasOutstandingLoan =
-      loanResult && loanResult.length > 0 && loanResult[0].active_loans > 0;
+    // Determine eligibility: share capital + no outstanding loan + positive savings
+    const eligibleForLoan = shareCapitalPaid && !hasOutstandingLoan && totalSavings > 0;
 
-    // Determine eligibility
     const eligibilityStatus = {
+      userId: userId,
+      matatu_id: matatu_id,
+      shareCapitalPaid: shareCapitalPaid,
       savings: totalSavings,
-      shareCapitalPaid: true,
       hasOutstandingLoan: hasOutstandingLoan,
-      eligibleForLoan: !hasOutstandingLoan && totalSavings > 0,
+      outstandingAmount: loanData.total_due,
+      activeLoans: loanData.active_loans,
+      eligibleForLoan: eligibleForLoan,
+      reason: !shareCapitalPaid ? "Share capital not paid" : hasOutstandingLoan ? "Outstanding loan must be repaid" : totalSavings <= 0 ? "No savings available" : "Eligible for loan"
     };
 
+    console.log(`Loan eligibility check - User: ${userId}, Matatu: ${matatu_id}, Eligible: ${eligibleForLoan}`);
     res.json(eligibilityStatus);
   } catch (error) {
     console.error("Error checking loan eligibility:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 };
 
-const getTotalLoans = (req, res) => {
+const getTotalLoans = async (req, res) => {
   const userId = req.userId;
-  const sql =
-    "SELECT SUM(amount_due) AS totalLoans FROM loans WHERE user_id = ?";
-  pool.query(sql, [userId], (error, results) => {
-    if (error) {
-      console.error("Error fetching total loans:", error);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-    res.json(results[0]);
-  });
+  
+  if (!userId) {
+    return res.status(400).json({ error: "User ID required" });
+  }
+
+  try {
+    const sql = `
+      SELECT 
+        COALESCE(SUM(amount_due), 0) AS totalLoans,
+        COALESCE(SUM(amount_issued), 0) AS totalIssued,
+        COUNT(*) AS loanCount
+      FROM loans 
+      WHERE user_id = ? AND amount_due > 0
+    `;
+    const [results] = await pool.query(sql, [userId]);
+    
+    const loanData = results && results.length > 0 ? results[0] : { totalLoans: 0, totalIssued: 0, loanCount: 0 };
+    console.log(`Total loans for user ${userId}: ${loanData.totalLoans} (${loanData.loanCount} loans)`);
+    res.json(loanData);
+  } catch (error) {
+    console.error("Error fetching total loans:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
 };
+
+  // Returns financial aggregates for a matatu: savings, outstanding loans, insurance, operations
+  const getFinancialStatus = async (req, res) => {
+    const matatu_id = req.query.matatu_id || req.params.matatuId || req.body.matatu_id;
+    if (!matatu_id) return res.status(400).json({ error: 'matatu_id required' });
+    try {
+      const savingsSql = `SELECT COALESCE(SUM(amount),0) AS totalSavings FROM savings WHERE matatu_id = ?`;
+      const [savingsRows] = await pool.query(savingsSql, [matatu_id]);
+      const totalSavings = savingsRows && savingsRows.length > 0 ? savingsRows[0].totalSavings : 0;
+
+      const loansSql = `SELECT COALESCE(SUM(amount_due),0) AS totalOutstanding FROM loans WHERE matatu_id = ? AND amount_due > 0`;
+      const [loanRows] = await pool.query(loansSql, [matatu_id]);
+      const totalOutstanding = loanRows && loanRows.length > 0 ? loanRows[0].totalOutstanding : 0;
+
+      const paymentsSql = `SELECT COALESCE(SUM(insurance),0) AS totalInsurance, COALESCE(SUM(operations),0) AS totalOperations FROM payments WHERE matatu_id = ?`;
+      const [paymentRows] = await pool.query(paymentsSql, [matatu_id]);
+      const totalInsurance = paymentRows && paymentRows.length > 0 ? paymentRows[0].totalInsurance : 0;
+      const totalOperations = paymentRows && paymentRows.length > 0 ? paymentRows[0].totalOperations : 0;
+
+      console.log(`Financial status for matatu ${matatu_id}: savings=${totalSavings}, outstanding=${totalOutstanding}`);
+      res.json({ matatu_id, totalSavings, totalOutstanding, totalInsurance, totalOperations });
+    } catch (error) {
+      console.error('Error fetching financial status:', error);
+      res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+  };
 
 const latestPayments = (req, res) => {
   const userId = req.userId;
@@ -435,14 +500,22 @@ const latestPayments = (req, res) => {
 
 const checkOutstandingLoan = async (matatu_id) => {
   try {
-    const loanQuery = "SELECT amount_due FROM loans WHERE matatu_id = ?";
+    // FIXED: Returns full loan object with loan_id, not just amount_due
+    const loanQuery = `
+      SELECT loan_id, amount_due, amount_issued 
+      FROM loans 
+      WHERE matatu_id = ? AND amount_due > 0 AND amount_issued > 0
+      ORDER BY loan_id DESC 
+      LIMIT 1
+    `;
     const [rows] = await pool.query(loanQuery, [matatu_id]);
 
-    if (rows && rows.length > 0 && rows[0].amount_due > 0) {
-      console.log("Outstanding loan:", rows[0].amount_due);
-      return rows[0].amount_due; // Return the outstanding loan amount
+    if (rows && rows.length > 0) {
+      console.log(`Outstanding loan - ID: ${rows[0].loan_id}, Due: ${rows[0].amount_due}`);
+      return rows[0]; // FIXED: Return full object with loan_id
     } else {
-      return 0; // No outstanding loan
+      console.log(`No outstanding loan for matatu ${matatu_id}`);
+      return null; // FIXED: Return null instead of 0
     }
   } catch (error) {
     console.error("Error checking outstanding loan:", error);
@@ -465,35 +538,9 @@ const shareholderPayment = async (req, res) => {
     if (mpesaResponse.ResponseCode !== "0") {
       return res.status(500).json({ error: "Failed to initiate MPESA payment" });
     }
-
-    // Hardcoded data to simulate a successful transaction
-    const mpesaReceiptNumber = "MPESA123456";
-
-    // Insert payment record
-    const paymentQuery = `
-            INSERT INTO payments (payment_id, user_id, amount_paid, transaction_code, CheckoutRequestID)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-    const paymentId = generatePaymentId();
-
-    await pool.query(paymentQuery, [
-      paymentId,
-      userId,
-      amount,
-      mpesaReceiptNumber,
-      mpesaResponse.CheckoutRequestID,
-    ]);
-
-    // Update user status to 'approved'
-    const updateUserStatusQuery = `
-            UPDATE Users
-            SET status = 'approved'
-            WHERE user_id = ?
-        `;
-    await pool.query(updateUserStatusQuery, [userId]);
-    shareholderCapitalPaymentEmail(email, user);
-
-    res.json({ message: "Payment processed successfully, enjoy our services!!!", mpesaReceiptNumber });
+    // STK Push initiated successfully; defer finalization to MPESA callback
+    console.log(`Shareholder STK push initiated for user ${userId}, CheckoutRequestID: ${mpesaResponse.CheckoutRequestID}`);
+    res.json({ message: "STK Push initiated. Awaiting MPESA confirmation.", CheckoutRequestID: mpesaResponse.CheckoutRequestID });
   } catch (error) {
     console.error("Error processing payment:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -503,6 +550,15 @@ const shareholderPayment = async (req, res) => {
 
 const paymentProcessing = async (req, res) => {
   const { amount, phone, vehicleRegistrationNumber, matatu_id } = req.body;
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  if (!amount || !phone || !matatu_id) {
+    return res.status(400).json({ error: "Missing required fields: amount, phone, matatu_id" });
+  }
 
   try {
     // Initiate MPESA STK Push
@@ -518,107 +574,24 @@ const paymentProcessing = async (req, res) => {
         .json({ error: "Failed to initiate MPESA payment" });
     }
 
-    // Hardcoded data to simulate a successful transaction
-    const mpesaReceiptNumber = "MPESA123456";
-    const operations = amount < 250 ? amount : 250;
-    let remainingAmount = amount - operations;
-    const insurance = remainingAmount < 250 ? remainingAmount : 250;
-    remainingAmount -= insurance;
-
-    // Check for outstanding loan
-    const outstandingLoan = await checkOutstandingLoan(matatu_id);
-
-    let loanPayment = 0;
-    let savingsAmount = 0;
-
-    if (outstandingLoan > 0) {
-      // Prioritize loan repayment
-      loanPayment =
-        remainingAmount > outstandingLoan ? outstandingLoan : remainingAmount;
-      remainingAmount -= loanPayment;
-      savingsAmount = remainingAmount;
-
-      // Update loan amount due
-      const updateLoanQuery =
-        "UPDATE loans SET amount_due = amount_due - ? WHERE matatu_id = ?";
-      await pool.query(updateLoanQuery, [loanPayment, matatu_id]);
-
-      // Insert payment record into loan_payments table
-      const insertLoanPaymentQuery = `
-                INSERT INTO loan_payments (loan_id, amount_paid, mpesa_receipt_number)
-                VALUES (?, ?, ?)
-            `;
-      await pool.query(insertLoanPaymentQuery, [
-        outstandingLoan.loan_id,
-        loanPayment,
-        mpesaReceiptNumber,
-      ]);
-
-      // Check if the loan is fully paid
-      const loanStatusQuery = "SELECT amount_due FROM loans WHERE loan_id = ?";
-      const [loan] = await pool.query(loanStatusQuery, [
-        outstandingLoan.loan_id,
-      ]);
-
-      if (loan.length > 0 && loan[0].amount_due <= 0) {
-        // Update loan status to fully_paid
-        const updateStatusQuery =
-          'UPDATE loans SET status = "fully_paid" WHERE loan_id = ?';
-        await pool.query(updateStatusQuery, [outstandingLoan.loan_id]);
-      }
-    } else {
-      // No loan, add to savings
-      savingsAmount = remainingAmount;
-    }
-
-    // Insert savings record if savingsAmount > 0
-    if (savingsAmount > 0) {
-      const insertSavingsQuery = `
-                INSERT INTO savings (user_id, payment_id, matatu_id, amount)
-                VALUES (?, ?, ?, ?)
-            `;
-      const userId = req.userId;
-      const paymentId = generatePaymentId(); // Generate a unique payment ID
-      await pool.query(insertSavingsQuery, [
-        userId,
-        paymentId,
-        matatu_id,
-        savingsAmount,
-      ]);
-    }
-
-    // Insert payment record
-    const paymentQuery = `
-            INSERT INTO payments (payment_id, user_id, loan, savings, matatu_id, amount_paid, transaction_code, operations, insurance, CheckoutRequestID)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-    const paymentId = generatePaymentId();
-    const userId = req.userId;
-
-    await pool.query(paymentQuery, [
-      paymentId,
-      userId,
-      loanPayment,
-      savingsAmount,
-      matatu_id,
-      amount,
-      mpesaReceiptNumber,
-      operations,
-      insurance,
-      mpesaResponse.CheckoutRequestID,
-    ]);
-
-    // Insert initial data into mpesastk table
+    // Store payment context for callback to retrieve
+    const CheckoutRequestID = mpesaResponse.CheckoutRequestID;
     const mpesaStkQuery = `
-            INSERT INTO mpesastk (mpesastk_id, mpesastk_status, ResultCode, ResultDesc, MpesaReceiptNumber, mpesastk_appid)
-            VALUES (NULL, 'successful', '0', 'Payment successful', ?, ?)
-        `;
-    await pool.query(mpesaStkQuery, [mpesaReceiptNumber, matatu_id]);
+      INSERT INTO mpesastk (CheckoutRequestID, user_id, matatu_id, amount, mpesastk_status, created_at)
+      VALUES (?, ?, ?, ?, 'pending', NOW())
+      ON DUPLICATE KEY UPDATE mpesastk_status = 'pending'
+    `;
+    await pool.query(mpesaStkQuery, [CheckoutRequestID, userId, matatu_id, amount]);
 
-    res.json({ message: "Payment processed successfully", mpesaReceiptNumber });
+    // Store CheckoutRequestID - payment completion handled by mpesaCallback
+    console.log(`STK Push initiated for user ${userId}, matatu ${matatu_id}, amount ${amount}, CheckoutRequestID: ${CheckoutRequestID}`);
+    res.json({ 
+      message: "STK Push initiated. Awaiting MPESA confirmation.", 
+      CheckoutRequestID: CheckoutRequestID 
+    });
   } catch (error) {
     console.error("Error processing payment:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 };
 
@@ -628,21 +601,21 @@ const mpesaCallback = async (req, res) => {
     Body: { stkCallback },
   } = req;
   const { CheckoutRequestID, ResultCode, CallbackMetadata } = stkCallback;
-  console.log("result code: ", ResultCode);
+  console.log("MPESA Callback received - CheckoutRequestID:", CheckoutRequestID, "ResultCode:", ResultCode);
 
   if (ResultCode === 1032) {
     // Payment canceled
     console.error("Payment canceled by user");
     const updateMpesaStkQuery = `
-            UPDATE mpesastk SET mpesastk_status = 'canceled', ResultCode = ?, ResultDesc = ?, CheckoutRequestID
-            WHERE mpesastk_id = (SELECT mpesastk_id FROM (SELECT mpesastk_id FROM mpesastk ORDER BY mpesastk_id DESC LIMIT 1) AS sub)
+            UPDATE mpesastk SET mpesastk_status = 'canceled', ResultCode = ?, ResultDesc = ?
+            WHERE CheckoutRequestID = ?
         `;
     await pool.query(updateMpesaStkQuery, [
       ResultCode,
       "Payment canceled by user",
       CheckoutRequestID,
     ]);
-    return res.status(400).json({ error: "Payment canceled by user" });
+    return res.json({ ResponseCode: 0 }); // Acknowledge to MPESA
   }
 
   if (ResultCode !== 0) {
@@ -650,85 +623,89 @@ const mpesaCallback = async (req, res) => {
     console.error("Payment failed with result code:", ResultCode);
     const updateMpesaStkQuery = `
             UPDATE mpesastk SET mpesastk_status = 'failed', ResultCode = ?, ResultDesc = ?
-            WHERE mpesastk_id = (SELECT mpesastk_id FROM (SELECT mpesastk_id FROM mpesastk ORDER BY mpesastk_id DESC LIMIT 1) AS sub)
+            WHERE CheckoutRequestID = ?
         `;
-    await pool.query(updateMpesaStkQuery, [ResultCode, "Payment failed"]);
-    return res.status(500).json({ error: "Payment failed" });
+    await pool.query(updateMpesaStkQuery, [ResultCode, "Payment failed", CheckoutRequestID]);
+    return res.json({ ResponseCode: 0 }); // Acknowledge to MPESA
   }
 
   // Payment successful
-  const mpesaReceiptNumber = CallbackMetadata.Item.find(
-    (item) => item.Name === "MpesaReceiptNumber"
-  ).Value;
-  const amount = CallbackMetadata.Item.find(
-    (item) => item.Name === "Amount"
-  ).Value;
-  const matatu_id = req.query.matatu_id;
-
   try {
-    const loanQuery = "SELECT * FROM loans WHERE matatu_id = ?";
-    const [loanRows] = await pool.query(loanQuery, [matatu_id]);
-    const loan = loanRows.length > 0 ? loanRows[0].amount_due : 0;
+    const mpesaReceiptNumber = CallbackMetadata.Item.find(
+      (item) => item.Name === "MpesaReceiptNumber"
+    )?.Value;
+    const amount = CallbackMetadata.Item.find(
+      (item) => item.Name === "Amount"
+    )?.Value;
 
-    let operations = 0;
-    let insurance = 0;
+    if (!mpesaReceiptNumber || !amount) {
+      console.error("Missing MPESA receipt or amount in callback");
+      return res.json({ ResponseCode: 0 }); // Acknowledge but log issue
+    }
+
+    // Get user and matatu info from payment processing context (stored during STK push)
+    const [paymentContext] = await pool.query(
+      "SELECT user_id, matatu_id FROM mpesastk WHERE CheckoutRequestID = ? LIMIT 1",
+      [CheckoutRequestID]
+    );
+
+    if (!paymentContext || paymentContext.length === 0) {
+      console.error("No payment context found for CheckoutRequestID:", CheckoutRequestID);
+      return res.json({ ResponseCode: 0 }); // Acknowledge
+    }
+
+    const userId = paymentContext[0].user_id;
+    const matatu_id = paymentContext[0].matatu_id;
+
+    // Parse payment allocation: Operations -> Insurance -> Loan -> Savings
+    let operations = Math.min(amount, 250);
+    let remainingAmount = amount - operations;
+
+    let insurance = Math.min(remainingAmount, 250);
+    remainingAmount -= insurance;
+
+    // Check for outstanding loan and allocate remaining to loan/savings
+    const outstandingLoan = await checkOutstandingLoan(matatu_id);
     let loanPayment = 0;
-    let savings = 0;
+    let loanId = null;
 
-    if (amount < 250) {
-      operations = amount;
-    } else {
-      operations = 250;
-      let remainingAmount = amount - 250;
+    if (outstandingLoan) {
+      loanPayment = Math.min(remainingAmount, outstandingLoan.amount_due);
+      loanId = outstandingLoan.loan_id;
+      remainingAmount -= loanPayment;
 
-      if (remainingAmount < 250) {
-        insurance = remainingAmount;
-      } else {
-        insurance = 250;
-        remainingAmount -= 250;
-
-        if (loan > 0) {
-          if (remainingAmount >= loan) {
-            loanPayment = loan;
-            remainingAmount -= loan;
-          } else {
-            loanPayment = remainingAmount;
-            remainingAmount = 0;
-          }
-        }
-
-        savings = remainingAmount;
-      }
+      // Update loan amount due
+      const newAmountDue = outstandingLoan.amount_due - loanPayment;
+      const updateLoanQuery = "UPDATE loans SET amount_due = ? WHERE loan_id = ?";
+      await pool.query(updateLoanQuery, [newAmountDue, loanId]);
     }
 
-    if (loan > 0 && loanPayment > 0) {
-      const updateLoanQuery =
-        "UPDATE loans SET amount_due = amount_due - ? WHERE matatu_id = ?";
-      await pool.query(updateLoanQuery, [loanPayment, matatu_id]);
-    }
+    const savings = remainingAmount;
 
+    // Insert savings record if applicable
     if (savings > 0) {
-      const updateSavingsQuery =
-        "UPDATE savings SET amount = amount + ? WHERE matatu_id = ?";
-      await pool.query(updateSavingsQuery, [savings, matatu_id]);
+      const insertSavingsQuery = `
+          INSERT INTO savings (user_id, matatu_id, amount, created_at)
+          VALUES (?, ?, ?, NOW())
+        `;
+      await pool.query(insertSavingsQuery, [userId, matatu_id, savings]);
     }
 
+    // Insert payment record
     const paymentQuery = `
-            INSERT INTO payments (payment_id, user_id, loan, savings, matatu_id, amount_paid, transaction_code, operations, insurance, CheckoutRequestID)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+      INSERT INTO payments (payment_id, user_id, matatu_id, amount_paid, transaction_code, loan, savings, operations, insurance, CheckoutRequestID, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    `;
     const paymentId = generatePaymentId();
-    const userId = req.userId;
-    const loanId = loanRows.length > 0 ? loanRows[0].loan_id : null;
 
     await pool.query(paymentQuery, [
       paymentId,
       userId,
-      loanPayment,
-      savings,
       matatu_id,
       amount,
       mpesaReceiptNumber,
+      loanPayment,
+      savings,
       operations,
       insurance,
       CheckoutRequestID,
@@ -737,18 +714,20 @@ const mpesaCallback = async (req, res) => {
     // Update mpesastk table for the successful transaction
     const updateMpesaStkQuery = `
             UPDATE mpesastk SET mpesastk_status = 'successful', ResultCode = ?, ResultDesc = ?, MpesaReceiptNumber = ?
-            WHERE mpesastk_id = (SELECT mpesastk_id FROM (SELECT mpesastk_id FROM mpesastk ORDER BY mpesastk_id DESC LIMIT 1) AS sub)
+            WHERE CheckoutRequestID = ?
         `;
     await pool.query(updateMpesaStkQuery, [
       ResultCode,
       "Payment successful",
       mpesaReceiptNumber,
+      CheckoutRequestID,
     ]);
 
-    res.json({ message: "Payment processed successfully", mpesaReceiptNumber });
+    console.log(`Payment confirmed - user:${userId} matatu:${matatu_id} amount:${amount} loan:${loanPayment} savings:${savings} operations:${operations} insurance:${insurance}`);
+    res.json({ ResponseCode: 0 }); // Acknowledge successful to MPESA
   } catch (error) {
-    console.error("Error processing payment:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error processing MPESA callback:", error);
+    res.json({ ResponseCode: 0 }); // Always acknowledge to MPESA
   }
 };
 
@@ -756,23 +735,32 @@ const checkPaymentStatus = async (req, res) => {
   const { CheckoutRequestID } = req.query;
 
   try {
-    // Query your database or the MPESA API to check the payment status
-    const paymentStatus = await pool.query(
-      "SELECT * FROM payments WHERE CheckoutRequestID = ?",
+    if (!CheckoutRequestID) {
+      return res.status(400).json({ error: "CheckoutRequestID required" });
+    }
+    
+    // Query database for payment status
+    const [results] = await pool.query(
+      "SELECT payment_id, transaction_code, amount_paid, created_at FROM payments WHERE CheckoutRequestID = ?",
       [CheckoutRequestID]
     );
-
-    if (paymentStatus.length > 0) {
+    
+    if (results && results.length > 0) {
+      const payment = results[0];
       res.json({
         status: "completed",
-        mpesaReceiptNumber: paymentStatus[0].transaction_code,
+        paymentId: payment.payment_id,
+        mpesaReceiptNumber: payment.transaction_code,
+        amountPaid: payment.amount_paid,
+        completedAt: payment.created_at
       });
     } else {
-      res.json({ status: "pending" });
+      // Payment not yet confirmed
+      res.json({ status: "pending", message: "Payment confirmation awaited" });
     }
   } catch (error) {
     console.error("Error checking payment status:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 };
 
@@ -792,6 +780,7 @@ module.exports = {
   paymentProcessing,
   checkLoanEligibility,
   getTotalLoans,
+  getFinancialStatus,
   getTotalSavings,
   latestPayments,
   mpesaCallback,

@@ -37,7 +37,7 @@ const HowToJoin = () => {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
       >
-        <h1 className="fw-bold">Join <span className="text-warning">Vuka SACCO</span></h1>
+        <h1 className="fw-bold">Join <span className="text-warning">Moline SACCO</span></h1>
         <p className="lead">Empowering Matatu Owners for a Brighter Future</p>
       </motion.div>
 
